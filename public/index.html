@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#2a3f50">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Breakdown Log">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <title>Breakdown Logger — Clamason</title>
+</head>
+<body>
+
+<header>
+  <img src="icons/Clamason-Logo-Side-PNG.png" class="logo-img" alt="Clamason">
+  <div class="header-divider"></div>
+  <h1>Breakdown Logger</h1>
+  <button id="btn-install" onclick="installApp()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 5v14M5 12l7 7 7-7"/>
+    </svg>
+    Install App
+  </button>
+  <div class="header-clock" id="clock">--:--:--</div>
+</header>
+
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('log')">📋 Log</button>
+  <button class="tab-btn" onclick="switchTab('overview')">📊 Overview</button>
+  <button class="tab-btn" onclick="switchTab('pareto')">📉 Pareto</button>
+  <button class="tab-btn" onclick="switchTab('faults')">🔁 Fault Trends</button>
+  <button class="tab-btn" onclick="switchTab('mtbf')">⏱ MTBF / MTTR</button>
+  <button class="tab-btn" onclick="switchTab('technician')">👤 Technician</button>
+  <button class="tab-btn" onclick="switchTab('equipment')">🏭 Equipment</button>
+  <button class="tab-btn" onclick="switchTab('team')">👥 Team</button>
+  <button class="tab-btn" onclick="switchTab('reasons')">🗂 Reasons</button>
+  <button class="tab-btn" onclick="switchTab('followups')">🔧 Follow-ups</button>
+</div>
+
+<div class="wrapper">
+
+  <!-- ══ TAB: LOG ══ -->
+  <div id="tab-log" class="tab-content active">
+
+    <!-- ── Live Down Banner ── -->
+    <div id="live-banner" style="display:none">
+      <div class="live-banner-header">🔴 MACHINES CURRENTLY DOWN</div>
+      <div id="live-list"></div>
+    </div>
+
+    <!-- ── Mark Machine Down ── -->
+    <div class="card card-down">
+      <div class="card-label">Mark Machine as Down Now</div>
+      <div class="card-body">
+        <div class="form-grid">
+          <div class="field">
+            <label for="down-machine">Machine</label>
+            <select id="down-machine"><option value="">— Select Machine —</option></select>
+          </div>
+          <div class="field">
+            <label for="down-tech">Technician</label>
+            <select id="down-tech"><option value="">— Select Technician —</option></select>
+          </div>
+          <div class="field full">
+            <label for="down-reason">Initial Reason (optional)</label>
+            <input type="text" id="down-reason" placeholder="e.g. Machine stopped, investigating…">
+          </div>
+          <button class="btn-down" onclick="markMachineDown()">
+            ⚠ MARK AS DOWN
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Log Breakdown Form ── -->
+    <div class="card card-form" id="card-log-form" style="display:none">
+      <div class="card-label">Log Completed Breakdown</div>
+      <div class="card-body">
+        <div class="form-grid">
+          <div class="field">
+            <label for="workcenter">Work Centre</label>
+            <select id="workcenter"><option value="">— Select Machine —</option></select>
+          </div>
+          <div class="field">
+            <label for="technician">Technician</label>
+            <select id="technician"><option value="">— Select Technician —</option></select>
+          </div>
+          <div class="field">
+            <label for="start-date">Start Date</label>
+            <input type="date" id="start-date">
+          </div>
+          <div class="field">
+            <label>Start Time</label>
+            <div style="display:flex; gap:8px">
+              <select id="start-hour" style="flex:1"></select>
+              <select id="start-min" style="flex:1"></select>
+            </div>
+          </div>
+          <div class="field">
+            <label for="end-date">Back Up Date</label>
+            <input type="date" id="end-date">
+          </div>
+          <div class="field">
+            <label>Back Up Time</label>
+            <div style="display:flex; gap:8px">
+              <select id="end-hour" style="flex:1"></select>
+              <select id="end-min" style="flex:1"></select>
+            </div>
+          </div>
+          <div class="field full">
+            <label for="fault-category">Fault Category</label>
+            <select id="fault-category" onchange="toggleOther(this)">
+              <option value="">— Select Category —</option>
+            </select>
+            <input type="text" id="other-detail" placeholder="Please specify the fault…" style="display:none; margin-top:10px">
+          </div>
+          <div class="field full">
+            <label for="reason">Breakdown Reason</label>
+            <textarea id="reason" placeholder="Describe the fault, failure mode, or cause…"></textarea>
+          </div>
+          <input type="hidden" id="edit-entry-id">
+          <button class="btn-submit" onclick="logEntry()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 5v14M5 12l7 7 7-7"/>
+            </svg>
+            LOG BREAKDOWN
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Breakdown Log Table ── -->
+    <div class="card card-log">
+      <div class="log-header">
+        <div class="card-label">Breakdown Log</div>
+        <select id="log-filter" onchange="applyFilter()" class="filter-select">
+          <option value="all">All Time</option>
+          <option value="week">This Week</option>
+          <option value="month">This Month</option>
+          <option value="3months">Last 3 Months</option>
+        </select>
+        <button class="btn-toggle" id="btn-toggle" onclick="toggleLog()">▲ Hide</button>
+        <button class="btn-clear" onclick="clearLog()">Clear All</button>
+      </div>
+      <div id="log-table-wrap">
+        <div class="empty-state" id="empty-state">No breakdowns logged yet</div>
+        <table id="log-table" style="display:none">
+          <thead>
+            <tr>
+              <th>Work Centre</th><th>Technician</th><th>Start</th>
+              <th>End</th><th>Duration</th><th>Category</th><th>Reason</th><th></th><th></th>
+            </tr>
+          </thead>
+          <tbody id="log-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: OVERVIEW ══ -->
+  <div id="tab-overview" class="tab-content">
+    <div class="export-bar">
+      <button class="btn-export" onclick="exportCSV()">⬇ Export CSV</button>
+      <button class="btn-export" onclick="exportPDF('overview')">⬇ Export PDF</button>
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">Total Breakdowns</div>
+        <div class="kpi-value" id="kpi-total">—</div>
+        <div class="kpi-sub">all time</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Total Downtime</div>
+        <div class="kpi-value" id="kpi-downtime">—</div>
+        <div class="kpi-sub">all time</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Avg MTTR</div>
+        <div class="kpi-value" id="kpi-mttr">—</div>
+        <div class="kpi-sub">mean time to repair</div>
+      </div>
+      <div class="kpi-card kpi-warn">
+        <div class="kpi-label">Worst Machine</div>
+        <div class="kpi-value kpi-value--sm" id="kpi-worst">—</div>
+        <div class="kpi-sub">most downtime</div>
+      </div>
+    </div>
+    <div class="card card-log">
+      <div class="card-label">Breakdowns — Last 6 Months</div>
+      <div class="card-body"><canvas id="chart-monthly" height="100"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: PARETO ══ -->
+  <div id="tab-pareto" class="tab-content">
+    <div class="export-bar">
+      <button class="btn-export" onclick="exportCSV()">⬇ Export CSV</button>
+      <button class="btn-export" onclick="exportPDF('pareto')">⬇ Export PDF</button>
+    </div>
+    <div class="card card-log">
+      <div class="card-label">Downtime by Machine (Pareto)</div>
+      <div class="card-body"><canvas id="chart-pareto" height="120"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: FAULT TRENDS ══ -->
+  <div id="tab-faults" class="tab-content">
+    <div class="export-bar">
+      <button class="btn-export" onclick="exportCSV()">⬇ Export CSV</button>
+      <button class="btn-export" onclick="exportPDF('faults')">⬇ Export PDF</button>
+    </div>
+    <div class="card card-log">
+      <div class="card-label">Breakdowns by Fault Category</div>
+      <div class="card-body"><canvas id="chart-faults" height="120"></canvas></div>
+    </div>
+    <div class="card card-log" style="margin-top:24px">
+      <div class="card-label">Top Repeated Faults</div>
+      <div class="card-body" id="fault-repeat-list"><div class="empty-state">No data yet</div></div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: MTBF / MTTR ══ -->
+  <div id="tab-mtbf" class="tab-content">
+    <div class="export-bar">
+      <button class="btn-export" onclick="exportCSV()">⬇ Export CSV</button>
+      <button class="btn-export" onclick="exportPDF('mtbf')">⬇ Export PDF</button>
+    </div>
+    <div class="card card-log">
+      <div class="card-label">MTBF &amp; MTTR by Machine</div>
+      <div class="card-body" id="mtbf-table-wrap"><div class="empty-state">No data yet</div></div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: TECHNICIAN ANALYSIS ══ -->
+  <div id="tab-technician" class="tab-content">
+    <div class="card card-log">
+      <div class="card-label">Jobs &amp; Avg Repair Time by Technician</div>
+      <div class="card-body"><canvas id="chart-tech" height="100"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: EQUIPMENT ══ -->
+  <div id="tab-equipment" class="tab-content">
+    <div class="card card-form">
+      <div class="card-label" id="eq-form-label">Add New Machine</div>
+      <div class="card-body">
+        <input type="hidden" id="eq-edit-id">
+        <div class="form-grid">
+          <div class="field">
+            <label for="eq-name">Machine Name</label>
+            <input type="text" id="eq-name" placeholder="e.g. Bruderer 1">
+          </div>
+          <div class="field">
+            <label for="eq-location">Location / Area</label>
+            <input type="text" id="eq-location" placeholder="e.g. Press Shop">
+          </div>
+          <div class="field full">
+            <label for="eq-notes">Notes</label>
+            <input type="text" id="eq-notes" placeholder="Optional notes…">
+          </div>
+          <div style="grid-column:1/-1; display:flex; gap:12px;">
+            <button class="btn-submit" style="flex:1; margin:0" onclick="saveMachine()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              SAVE MACHINE
+            </button>
+            <button class="btn-clear" style="padding:14px 24px" onclick="cancelEqEdit()">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card card-log">
+      <div class="card-label">Machine List</div>
+      <div class="card-body" id="eq-list"><div class="empty-state">No machines added yet</div></div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: TEAM ══ -->
+  <div id="tab-team" class="tab-content">
+    <div class="card card-form">
+      <div class="card-label" id="team-form-label">Add New Technician</div>
+      <div class="card-body">
+        <input type="hidden" id="team-edit-id">
+        <div class="form-grid">
+          <div class="field">
+            <label for="team-name">Name</label>
+            <input type="text" id="team-name" placeholder="e.g. George">
+          </div>
+          <div class="field">
+            <label for="team-role">Role</label>
+            <input type="text" id="team-role" placeholder="e.g. Electrician">
+          </div>
+          <div class="field full">
+            <label for="team-notes">Notes</label>
+            <input type="text" id="team-notes" placeholder="Optional notes…">
+          </div>
+          <div style="grid-column:1/-1; display:flex; gap:12px;">
+            <button class="btn-submit" style="flex:1; margin:0" onclick="saveTechnician()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              SAVE TECHNICIAN
+            </button>
+            <button class="btn-clear" style="padding:14px 24px" onclick="cancelTeamEdit()">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card card-log">
+      <div class="card-label">Team List</div>
+      <div class="card-body" id="team-list"><div class="empty-state">No technicians added yet</div></div>
+    </div>
+  </div>
+
+</div>
+<!-- ══ TAB: REASONS ══ -->
+  <div id="tab-reasons" class="tab-content">
+    <div style="display:flex; justify-content:flex-end; margin-bottom:8px;">
+      <button class="btn-export" onclick="document.getElementById('reasons-form-card').style.display='block'">+ Add Category</button>
+    </div>
+    <div class="card card-form" id="reasons-form-card" style="display:none">
+      <div class="card-label" id="reason-form-label">Add / Edit Reason</div>
+      <div class="card-body">
+        <input type="hidden" id="reason-edit-id">
+        <div class="form-grid">
+          <div class="field full">
+            <label for="reason-name">Category Name</label>
+            <input type="text" id="reason-name" placeholder="e.g. Hydraulic — Pump / Valve">
+          </div>
+          <div style="grid-column:1/-1; display:flex; gap:12px;">
+            <button class="btn-submit" style="flex:1; margin:0" onclick="saveReason()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              SAVE REASON
+            </button>
+            <button class="btn-clear" style="padding:14px 24px" onclick="cancelReasonEdit()">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card card-log">
+      <div class="card-label">Fault Categories</div>
+      <div class="card-body" id="reasons-list"><div class="empty-state">No categories yet</div></div>
+    </div>
+  </div>
+
+</div>
+
+  <!-- ══ TAB: FOLLOW-UPS ══ -->
+  <div id="tab-followups" class="tab-content">
+    <div class="card card-form" id="followup-form-card" style="display:none">
+      <div class="card-label">New Follow-up</div>
+      <div class="card-body">
+        <input type="hidden" id="fu-breakdown-id">
+        <div class="form-grid">
+          <div class="field full">
+            <label>Machine</label>
+            <div id="fu-machine-name" style="font-size:16px;font-weight:700;color:#fff;padding:8px 0"></div>
+          </div>
+          <div class="field full">
+            <label for="fu-description">What needs doing</label>
+            <input type="text" id="fu-description" placeholder="e.g. Replace temp sensor with correct part">
+          </div>
+          <div class="field full">
+            <label for="fu-part">Part / Item to order (optional)</label>
+            <input type="text" id="fu-part" placeholder="e.g. Omron E2B-M12KS04-WP-B1">
+          </div>
+          <div style="grid-column:1/-1; display:flex; gap:12px;">
+            <button class="btn-submit" style="flex:1; margin:0" onclick="saveFollowUp()">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              SAVE FOLLOW-UP
+            </button>
+            <button class="btn-clear" style="padding:14px 24px" onclick="cancelFollowUp()">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card card-log">
+      <div class="card-label">Open Follow-ups</div>
+      <div class="card-body" id="followups-list"><div class="empty-state">No open follow-ups</div></div>
+    </div>
+  </div>
+
+</div>
+<!-- ══ BREAKDOWN DETAIL MODAL ══ -->
+<div id="breakdown-modal" style="display:none" onclick="closeModal(event)">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-machine">—</div>
+      <button class="modal-close" onclick="document.getElementById('breakdown-modal').style.display='none'">✕ Close</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-grid">
+        <div class="modal-field"><div class="modal-label">Technician</div><div class="modal-value" id="modal-tech">—</div></div>
+        <div class="modal-field"><div class="modal-label">Duration</div><div class="modal-value" id="modal-duration">—</div></div>
+        <div class="modal-field"><div class="modal-label">Start</div><div class="modal-value" id="modal-start">—</div></div>
+        <div class="modal-field"><div class="modal-label">Back Up</div><div class="modal-value" id="modal-end">—</div></div>
+        <div class="modal-field full"><div class="modal-label">Category</div><div class="modal-value" id="modal-category">—</div></div>
+        <div class="modal-field full"><div class="modal-label">Reason</div><div class="modal-value" id="modal-reason">—</div></div>
+      </div>
+      <div class="modal-section-title">🔧 Follow-ups</div>
+      <div id="modal-followups"><div class="empty-state" style="padding:20px">No follow-ups for this breakdown</div></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast">✔ Saved</div>
+<script src="js/utils.js"></script>
+<script src="js/log.js"></script>
+<script src="js/livedown.js"></script>
+<script src="js/dashboard.js"></script>
+<script src="js/equipment.js"></script>
+<script src="js/team.js"></script>
+<script src="js/export.js"></script>
+<script src="js/reasons.js"></script>
+<script src="js/followups.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
