@@ -368,7 +368,7 @@ http.createServer(async (req, res) => {
   }
 
   // ── Static files ──
-  const urlPath  = url === '/' ? '/index.html' : url;
+  const urlPath  = url === '/' ? '/index.html' : url.split('?')[0];
   const filePath = path.join(PUBLIC, urlPath);
   const ext      = path.extname(filePath);
   const mime     = MIME[ext] || 'text/plain';
