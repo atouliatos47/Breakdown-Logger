@@ -1,8 +1,15 @@
 require('dotenv').config();
 const http = require('http');
-const fs   = require('fs');
+const fs = require('fs');
 const path = require('path');
 const { Pool } = require('pg');
+const webpush = require('web-push');
+
+webpush.setVapidDetails(
+  process.env.VAPID_EMAIL,
+  process.env.VAPID_PUBLIC_KEY,
+  process.env.VAPID_PRIVATE_KEY
+);
 
 const PORT = process.env.PORT || 3005;
 const PUBLIC = path.join(__dirname, 'public');
@@ -63,6 +70,14 @@ pool.query(`
     status         TEXT NOT NULL DEFAULT 'Pending',
     created_at     TIMESTAMPTZ DEFAULT NOW()
   );
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id         SERIAL PRIMARY KEY,
+    endpoint   TEXT NOT NULL UNIQUE,
+    p256dh     TEXT NOT NULL,
+    auth       TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  
 
 
 `).then(() => {
@@ -74,11 +89,11 @@ pool.query(`
 // ── MIME types ──
 const MIME = {
   '.html': 'text/html',
-  '.css':  'text/css',
-  '.js':   'application/javascript',
+  '.css': 'text/css',
+  '.js': 'application/javascript',
   '.json': 'application/json',
-  '.png':  'image/png',
-  '.ico':  'image/x-icon',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
   '.webmanifest': 'application/manifest+json',
 };
 
@@ -98,9 +113,32 @@ function sendJSON(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
+// ── SSE clients ──
+let sseClients = [];
+
+function broadcast(data) {
+  const msg = `data: ${JSON.stringify(data)}\n\n`;
+  sseClients.forEach(client => client.write(msg));
+}
+
 // ── Router ──
 http.createServer(async (req, res) => {
   const { method, url } = req;
+
+  // ── SSE endpoint ──
+  if (method === 'GET' && url === '/api/events') {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    });
+    res.write('data: {"type":"connected"}\n\n');
+    sseClients.push(res);
+    req.on('close', () => {
+      sseClients = sseClients.filter(c => c !== res);
+    });
+    return;
+  }
 
   // ── BREAKDOWNS ──
   if (method === 'POST' && url === '/api/breakdowns') {
@@ -128,7 +166,7 @@ http.createServer(async (req, res) => {
   if (method === 'PUT' && url.startsWith('/api/breakdowns/')) {
     try {
       const id = parseInt(url.split('/').pop());
-      const b  = await readBody(req);
+      const b = await readBody(req);
       const { wc, tech, start, end, durationMins, category, reason } = b;
       const r = await pool.query(
         `UPDATE breakdowns
@@ -173,7 +211,7 @@ http.createServer(async (req, res) => {
   if (method === 'PUT' && url.startsWith('/api/machines/')) {
     try {
       const id = parseInt(url.split('/').pop());
-      const b  = await readBody(req);
+      const b = await readBody(req);
       const { name, location, notes } = b;
       const r = await pool.query(
         `UPDATE machines SET name=$1, location=$2, notes=$3 WHERE id=$4 RETURNING *`,
@@ -215,7 +253,7 @@ http.createServer(async (req, res) => {
   if (method === 'PUT' && url.startsWith('/api/technicians/')) {
     try {
       const id = parseInt(url.split('/').pop());
-      const b  = await readBody(req);
+      const b = await readBody(req);
       const { name, role, notes } = b;
       const r = await pool.query(
         `UPDATE technicians SET name=$1, role=$2, notes=$3 WHERE id=$4 RETURNING *`,
@@ -251,6 +289,13 @@ http.createServer(async (req, res) => {
          VALUES ($1,$2,$3) RETURNING *`,
         [wc, tech, reason || '']
       );
+      broadcast({ type: 'livedown_update' });
+      broadcast({ type: 'machine_down', wc, tech, reason: reason || 'No reason given' });
+      sendPushToAll({
+        title: `🔴 MACHINE DOWN — ${wc}`,
+        body: `${tech} is attending. Tap to open.`,
+        url: '/'
+      });
       return sendJSON(res, 201, r.rows[0]);
     } catch (err) { return sendJSON(res, 500, { error: err.message }); }
   }
@@ -258,11 +303,53 @@ http.createServer(async (req, res) => {
   if (method === 'DELETE' && url.startsWith('/api/livedowns/')) {
     try {
       const id = parseInt(url.split('/').pop());
-      const r  = await pool.query(
+      const r = await pool.query(
         `DELETE FROM live_downs WHERE id=$1 RETURNING *`, [id]
       );
+      broadcast({ type: 'livedown_update' });
+      if (r.rows[0]) {
+        broadcast({ type: 'machine_up', wc: r.rows[0].work_centre, tech: r.rows[0].technician });
+        sendPushToAll({
+          title: `✅ MACHINE BACK UP — ${r.rows[0].work_centre}`,
+          body: `Breakdown logged by ${r.rows[0].technician}.`,
+          url: '/'
+        });
+      }
       return sendJSON(res, 200, r.rows[0]);
     } catch (err) { return sendJSON(res, 500, { error: err.message }); }
+  }
+  // ── PUSH SUBSCRIPTIONS ──
+  if (method === 'POST' && url === '/api/subscribe') {
+    try {
+      const b = await readBody(req);
+      const { endpoint, keys } = b;
+      await pool.query(
+        `INSERT INTO push_subscriptions (endpoint, p256dh, auth)
+         VALUES ($1,$2,$3)
+         ON CONFLICT (endpoint) DO NOTHING`,
+        [endpoint, keys.p256dh, keys.auth]
+      );
+      return sendJSON(res, 201, { ok: true });
+    } catch (err) { return sendJSON(res, 500, { error: err.message }); }
+  }
+
+  // ── SEND PUSH TO ALL SUBSCRIBERS ──
+  async function sendPushToAll(payload) {
+    try {
+      const r = await pool.query(`SELECT * FROM push_subscriptions`);
+      r.rows.forEach(row => {
+        const sub = {
+          endpoint: row.endpoint,
+          keys: { p256dh: row.p256dh, auth: row.auth }
+        };
+        webpush.sendNotification(sub, JSON.stringify(payload))
+          .catch(err => {
+            if (err.statusCode === 410) {
+              pool.query(`DELETE FROM push_subscriptions WHERE endpoint=$1`, [row.endpoint]);
+            }
+          });
+      });
+    } catch (err) { console.error('Push error:', err.message); }
   }
 
   // ── FAULT REASONS ──
@@ -289,7 +376,7 @@ http.createServer(async (req, res) => {
   if (method === 'PUT' && url.startsWith('/api/reasons/')) {
     try {
       const id = parseInt(url.split('/').pop());
-      const b  = await readBody(req);
+      const b = await readBody(req);
       const { name } = b;
       const r = await pool.query(
         `UPDATE fault_reasons SET name=$1 WHERE id=$2 RETURNING *`,
@@ -324,7 +411,7 @@ http.createServer(async (req, res) => {
   if (method === 'GET' && url.startsWith('/api/followups/breakdown/')) {
     try {
       const id = parseInt(url.split('/').pop());
-      const r  = await pool.query(
+      const r = await pool.query(
         `SELECT * FROM follow_ups WHERE breakdown_id=$1 AND status != 'Complete' ORDER BY created_at DESC`,
         [id]
       );
@@ -349,7 +436,7 @@ http.createServer(async (req, res) => {
   if (method === 'PUT' && url.startsWith('/api/followups/')) {
     try {
       const id = parseInt(url.split('/').pop());
-      const b  = await readBody(req);
+      const b = await readBody(req);
       const { status } = b;
       const r = await pool.query(
         `UPDATE follow_ups SET status=$1 WHERE id=$2 RETURNING *`,
@@ -368,10 +455,10 @@ http.createServer(async (req, res) => {
   }
 
   // ── Static files ──
-  const urlPath  = url === '/' ? '/index.html' : url.split('?')[0];
+  const urlPath = url === '/' ? '/index.html' : url.split('?')[0];
   const filePath = path.join(PUBLIC, urlPath);
-  const ext      = path.extname(filePath);
-  const mime     = MIME[ext] || 'text/plain';
+  const ext = path.extname(filePath);
+  const mime = MIME[ext] || 'text/plain';
 
   fs.readFile(filePath, (err, data) => {
     if (err) { res.writeHead(404); res.end('Not found'); return; }
