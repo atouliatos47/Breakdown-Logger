@@ -1,14 +1,14 @@
 @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap');
 
 :root {
-  --bg: #f0f5e8;
+  --bg: #141f28;
   --surface: #243547;
   --panel: #1a2836;
   --border: #3a5068;
   --accent: #95C11F;
   --accent-dk: #739618;
   --red: #e04040;
-  --text: #1a2a1a;
+  --text: #e8f0f7;
   --muted: #7a9ab8;
   --green-ok: #27ae60;
   --font-hd: 'Rajdhani', sans-serif;
