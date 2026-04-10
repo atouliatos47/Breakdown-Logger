@@ -1,15 +1,15 @@
 @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap');
 
 :root {
-  --bg: #2a3f50;
-  --surface: #344e62;
-  --panel: #253848;
-  --border: #4a6478;
-  --accent: #78be20;
-  --accent-dk: #5a9018;
+  --bg: #f0f5e8;
+  --surface: #243547;
+  --panel: #1a2836;
+  --border: #3a5068;
+  --accent: #95C11F;
+  --accent-dk: #739618;
   --red: #e04040;
-  --text: #e8f0f7;
-  --muted: #8aacbf;
+  --text: #1a2a1a;
+  --muted: #7a9ab8;
   --green-ok: #27ae60;
   --font-hd: 'Rajdhani', sans-serif;
   --font-mono: 'Share Tech Mono', monospace;
@@ -207,7 +207,7 @@ input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(120, 190, 32, .15);
+  box-shadow: 0 0 0 2px rgba(149, 193, 31, .18);
 }
 
 textarea {
